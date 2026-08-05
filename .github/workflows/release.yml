@@ -1,0 +1,53 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the tag matches every declared version
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME#v}"
+          header="$(grep -m1 -oP '^\s*\*\s*Version:\s*\K\S+' trackbridge.php)"
+          constant="$(grep -m1 -oP "define\( 'TRACKBRIDGE_VERSION', '\K[^']+" trackbridge.php)"
+          stable="$(grep -m1 -oP '^Stable tag:\s*\K\S+' readme.txt)"
+
+          echo "tag=${tag} header=${header} constant=${constant} stable=${stable}"
+
+          status=0
+          for pair in "plugin header:${header}" "TRACKBRIDGE_VERSION:${constant}" "readme.txt stable tag:${stable}"; do
+            name="${pair%%:*}"
+            value="${pair#*:}"
+            if [ "${value}" != "${tag}" ]; then
+              echo "::error::${name} is ${value} but the tag is ${tag}"
+              status=1
+            fi
+          done
+          exit "${status}"
+
+      - name: Build the plugin zip
+        run: |
+          set -euo pipefail
+          mkdir -p build/trackbridge
+          rsync -a --exclude-from=.distignore ./ build/trackbridge/
+          cd build
+          zip -qr trackbridge.zip trackbridge
+          unzip -l trackbridge.zip
+
+      - name: Publish the release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/trackbridge.zip
+          generate_release_notes: true
+          fail_on_unmatched_files: true

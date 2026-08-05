@@ -1,0 +1,22 @@
+# Files and directories excluded from the distributed plugin zip.
+.git
+.github
+.gitignore
+.distignore
+.wp-env.json
+.DS_Store
+.phpunit.cache
+.phpunit.result.cache
+.phpcs-cache
+build
+node_modules
+tests
+vendor
+composer.json
+composer.lock
+package.json
+package-lock.json
+phpcs.xml.dist
+phpunit.xml.dist
+phpunit.integration.xml.dist
+README.md

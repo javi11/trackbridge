@@ -1,0 +1,42 @@
+{
+	"name": "javi11/trackbridge",
+	"description": "Add WooCommerce shipment tracking from the official mobile app via a plain order custom field.",
+	"type": "wordpress-plugin",
+	"license": "GPL-2.0-or-later",
+	"keywords": [
+		"woocommerce",
+		"wordpress",
+		"shipment-tracking"
+	],
+	"homepage": "https://github.com/javi11/trackbridge",
+	"require": {
+		"php": ">=7.4"
+	},
+	"require-dev": {
+		"dealerdirect/phpcodesniffer-composer-installer": "^1.0",
+		"phpcompatibility/phpcompatibility-wp": "^2.1",
+		"squizlabs/php_codesniffer": "^3.9",
+		"wp-coding-standards/wpcs": "^3.1",
+		"phpunit/phpunit": "^9.6",
+		"yoast/phpunit-polyfills": "^2.0"
+	},
+	"autoload-dev": {
+		"classmap": [
+			"includes/"
+		]
+	},
+	"scripts": {
+		"lint": "find . -name '*.php' -not -path './vendor/*' -not -path './node_modules/*' -not -path './build/*' -print0 | xargs -0 -n1 -P4 php -l",
+		"phpcs": "phpcs",
+		"phpcbf": "phpcbf",
+		"test": "phpunit --testsuite unit",
+		"test:coverage": "phpunit --testsuite unit --coverage-text",
+		"test:integration": "phpunit -c phpunit.integration.xml.dist"
+	},
+	"config": {
+		"allow-plugins": {
+			"dealerdirect/phpcodesniffer-composer-installer": true
+		},
+		"sort-packages": true
+	}
+}

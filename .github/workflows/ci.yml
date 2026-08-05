@@ -1,0 +1,116 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint (PHP ${{ matrix.php }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['7.4', '8.0', '8.1', '8.2', '8.3']
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          coverage: none
+
+      - name: Check syntax
+        run: |
+          find . -path ./vendor -prune -o -path ./node_modules -prune -o -name '*.php' -print0 \
+            | xargs -0 -n1 -P4 php -l
+
+  coding-standards:
+    name: Coding standards
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+          tools: composer
+
+      - name: Install dependencies
+        uses: ramsey/composer-install@v3
+
+      - name: Run PHPCS
+        run: composer phpcs
+
+  unit:
+    name: Unit tests (PHP ${{ matrix.php }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['7.4', '8.3']
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          coverage: none
+          tools: composer
+
+      - name: Install dependencies
+        uses: ramsey/composer-install@v3
+
+      - name: Run unit tests
+        run: composer test
+
+  integration:
+    name: Integration tests (HPOS=${{ matrix.hpos }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        hpos: ['0', '1']
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+          tools: composer
+
+      - name: Install dependencies
+        uses: ramsey/composer-install@v3
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Start WordPress and WooCommerce
+        run: npx --yes @wordpress/env@latest start
+
+      - name: Run integration tests
+        run: |
+          plugin_dir="$(basename "$GITHUB_WORKSPACE")"
+          npx --yes @wordpress/env@latest run tests-cli \
+            --env-cwd="wp-content/plugins/${plugin_dir}" \
+            bash -c "TRACKBRIDGE_HPOS=${{ matrix.hpos }} vendor/bin/phpunit -c phpunit.integration.xml.dist"
+
+      - name: Show WordPress debug log on failure
+        if: failure()
+        run: npx --yes @wordpress/env@latest run tests-cli cat wp-content/debug.log || true
