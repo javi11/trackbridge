@@ -9,7 +9,7 @@
  * Plugin Name:          TrackBridge for WooCommerce
  * Plugin URI:           https://github.com/javi11/trackbridge
  * Description:          Add shipment tracking from the official WooCommerce mobile app. Type a tracking number into a plain order custom field and TrackBridge forwards it to Advanced Shipment Tracking or WooCommerce Shipment Tracking.
- * Version:              1.0.0
+ * Version:              1.0.1
  * Requires at least:    5.9
  * Requires PHP:         7.4
  * Author:               javi11
@@ -24,7 +24,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'TRACKBRIDGE_VERSION', '1.0.0' );
+define( 'TRACKBRIDGE_VERSION', '1.0.1' );
 define( 'TRACKBRIDGE_FILE', __FILE__ );
 define( 'TRACKBRIDGE_PATH', plugin_dir_path( __FILE__ ) );
 define( 'TRACKBRIDGE_MIN_WC_VERSION', '6.0' );

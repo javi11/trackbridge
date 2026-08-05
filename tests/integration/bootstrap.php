@@ -47,6 +47,31 @@ tests_add_filter(
 		}
 
 		require_once $woocommerce;
+
+		/*
+		 * AST refuses to load anything at all unless
+		 * is_plugin_active( 'woocommerce/woocommerce.php' ) is true, and it checks
+		 * that literal path. wp-env installs WooCommerce from a zip, so it lands in
+		 * `woocommerce.latest-stable` and the option never contains that path.
+		 * Report the canonical path so AST loads its includes and public functions.
+		 */
+		add_filter(
+			'pre_option_active_plugins',
+			function () {
+				return array( 'woocommerce/woocommerce.php' );
+			}
+		);
+
+		/*
+		 * Load Advanced Shipment Tracking too. The adapter talks to AST's real
+		 * API, so it has to be tested against the real plugin — a test double
+		 * cannot catch the plugin renaming or moving the functions we call.
+		 */
+		foreach ( (array) glob( $plugins_root . '/woo-advanced-shipment-tracking*/woocommerce-advanced-shipment-tracking.php' ) as $candidate ) {
+			require_once $candidate;
+			break;
+		}
+
 		require_once $plugin_dir . '/trackbridge.php';
 		require_once __DIR__ . '/class-stub-provider.php';
 
@@ -75,6 +100,22 @@ tests_add_filter(
 
 		if ( class_exists( 'WC_Install' ) ) {
 			WC_Install::install();
+		}
+
+		/*
+		 * Create AST's carrier table, which normally happens on activation.
+		 *
+		 * Only the table is created, not its contents: AST populates carriers from
+		 * api.trackship.com through an Action Scheduler job, so the list is remote
+		 * and asynchronous. Tests that need carriers seed rows themselves, which
+		 * keeps them hermetic and still exercises AST's real schema and accessor.
+		 */
+		if ( class_exists( 'WC_Advanced_Shipment_Tracking_Install' ) && is_callable( array( 'WC_Advanced_Shipment_Tracking_Install', 'get_instance' ) ) ) {
+			$trackbridge_ast_install = WC_Advanced_Shipment_Tracking_Install::get_instance();
+
+			if ( is_object( $trackbridge_ast_install ) && method_exists( $trackbridge_ast_install, 'create_shippment_tracking_table' ) ) {
+				$trackbridge_ast_install->create_shippment_tracking_table();
+			}
 		}
 	}
 );

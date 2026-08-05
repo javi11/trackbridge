@@ -1,7 +1,8 @@
 {
 	"plugins": [
 		".",
-		"https://downloads.wordpress.org/plugin/woocommerce.latest-stable.zip"
+		"https://downloads.wordpress.org/plugin/woocommerce.latest-stable.zip",
+		"https://downloads.wordpress.org/plugin/woo-advanced-shipment-tracking.latest-stable.zip"
 	],
 	"config": {
 		"WP_DEBUG": true,

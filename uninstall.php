@@ -26,5 +26,3 @@ $trackbridge_options = array(
 foreach ( $trackbridge_options as $trackbridge_option ) {
 	delete_option( $trackbridge_option );
 }
-
-delete_transient( 'trackbridge_ast_carriers' );

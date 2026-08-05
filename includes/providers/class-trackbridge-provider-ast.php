@@ -10,9 +10,14 @@ defined( 'ABSPATH' ) || exit;
 /**
  * Writes tracking numbers through Advanced Shipment Tracking.
  *
- * Uses `add_tracking_item()`, which exists in the free plugin as well as Pro.
- * The Pro-only `ast_insert_tracking_number()` helper is deliberately avoided so
- * the free tier is fully supported, and AST's own `insert_tracking_item()` is
+ * The API lives on `WC_Advanced_Shipment_Tracking_Actions`, reached through its
+ * `get_instance()` singleton. Note that `wc_advanced_shipment_tracking()` returns
+ * a *different* object — the main plugin class — which has no tracking methods at
+ * all. TrackBridge 1.0.0 checked that object for `add_tracking_item()` and so
+ * reported "no supported tracking plugin is active" on every store running AST.
+ *
+ * `ast_add_tracking_number()` is used as a fallback for editions that expose the
+ * global helper but not the class. AST's Pro-only `insert_tracking_item()` is
  * avoided because it interpolates the carrier into an unescaped SQL query.
  *
  * @since 1.0.0
@@ -25,20 +30,6 @@ class Trackbridge_Provider_AST extends Trackbridge_Abstract_Provider {
 	 * @var string
 	 */
 	const ID = 'ast';
-
-	/**
-	 * Transient caching the carrier list.
-	 *
-	 * @var string
-	 */
-	const CARRIERS_TRANSIENT = 'trackbridge_ast_carriers';
-
-	/**
-	 * How long the carrier list stays cached, in seconds.
-	 *
-	 * @var int
-	 */
-	const CARRIERS_TTL = 43200;
 
 	/**
 	 * Returns the stable identifier used in settings.
@@ -61,17 +52,17 @@ class Trackbridge_Provider_AST extends Trackbridge_Abstract_Provider {
 	}
 
 	/**
-	 * Whether AST is active and exposes the API we rely on.
+	 * Whether AST is active and exposes an API we can write through.
 	 *
 	 * @since 1.0.0
 	 * @return bool
 	 */
 	public function is_available() {
-		return null !== $this->get_ast_instance();
+		return null !== $this->get_actions() || function_exists( 'ast_add_tracking_number' );
 	}
 
 	/**
-	 * Returns AST's carriers as a `ts_slug => provider_name` map.
+	 * Returns AST's carriers as a `ts_slug => provider name` map.
 	 *
 	 * AST's own admin dropdown stores `ts_slug` as the tracking provider, so
 	 * TrackBridge must store the same value for tracking links to resolve.
@@ -80,15 +71,31 @@ class Trackbridge_Provider_AST extends Trackbridge_Abstract_Provider {
 	 * @return array
 	 */
 	public function get_carriers() {
-		$cached = get_transient( self::CARRIERS_TRANSIENT );
+		$actions = $this->get_actions();
 
-		if ( is_array( $cached ) ) {
-			return $cached;
+		if ( null === $actions || ! method_exists( $actions, 'get_providers' ) ) {
+			return array();
 		}
 
-		$carriers = $this->fetch_carriers();
+		$providers = $actions->get_providers();
 
-		set_transient( self::CARRIERS_TRANSIENT, $carriers, self::CARRIERS_TTL );
+		if ( ! is_array( $providers ) ) {
+			return array();
+		}
+
+		$carriers = array();
+
+		foreach ( $providers as $slug => $provider ) {
+			$slug = (string) $slug;
+
+			if ( '' === $slug ) {
+				continue;
+			}
+
+			$carriers[ $slug ] = $this->extract_provider_name( $provider, $slug );
+		}
+
+		asort( $carriers );
 
 		return $carriers;
 	}
@@ -96,11 +103,9 @@ class Trackbridge_Provider_AST extends Trackbridge_Abstract_Provider {
 	/**
 	 * Writes a tracking number onto an order via AST.
 	 *
-	 * `status_shipped` is intentionally omitted from the arguments: when it is
-	 * set, AST completes the order itself on a separate order instance, which
-	 * would race with TrackBridge's own save. TrackBridge handles the status
-	 * transition so the behaviour matches the WooCommerce Shipment Tracking
-	 * adapter exactly.
+	 * The shipped status is deliberately sent as `0` (not shipped): AST reacts to
+	 * that value by transitioning the order, and TrackBridge owns the status
+	 * transition so behaviour stays identical across tracking plugins.
 	 *
 	 * @since 1.0.0
 	 *
@@ -110,115 +115,85 @@ class Trackbridge_Provider_AST extends Trackbridge_Abstract_Provider {
 	 * @return bool True when the tracking number was stored.
 	 */
 	public function add_tracking( $order, $number, $carrier ) {
-		$instance = $this->get_ast_instance();
-
-		if ( null === $instance || ! $order instanceof WC_Order ) {
+		if ( ! $order instanceof WC_Order ) {
 			return false;
 		}
 
-		$result = $instance->add_tracking_item(
-			$order->get_id(),
-			array(
-				'tracking_provider' => $carrier,
-				'tracking_number'   => $number,
-				'date_shipped'      => $this->get_ship_date(),
-			)
-		);
+		$order_id = $order->get_id();
+		$actions  = $this->get_actions();
 
-		return is_array( $result ) && ! empty( $result['tracking_number'] );
+		if ( null !== $actions ) {
+			/*
+			 * AST calls strtotime() on date_shipped without checking that the key
+			 * exists, so it must always be supplied. This is also why the global
+			 * helper is not preferred: it defaults the date to null.
+			 */
+			$actions->add_tracking_item(
+				$order_id,
+				array(
+					'tracking_provider' => $carrier,
+					'tracking_number'   => $number,
+					'date_shipped'      => $this->get_ship_date(),
+					'status_shipped'    => 0,
+				)
+			);
+		} elseif ( function_exists( 'ast_add_tracking_number' ) ) {
+			ast_add_tracking_number( $order_id, $number, $carrier, $this->get_ship_date(), 0 );
+		} else {
+			return false;
+		}
+
+		// Confirm against fresh data rather than trusting a return value.
+		$fresh = wc_get_order( $order_id );
+
+		return $fresh instanceof WC_Order && $this->has_tracking( $fresh, $number, $carrier );
 	}
 
 	/**
-	 * Returns AST's main instance when the expected API is present.
+	 * Returns AST's actions instance when the expected API is present.
 	 *
 	 * @since 1.0.0
 	 * @return object|null
 	 */
-	private function get_ast_instance() {
-		if ( ! function_exists( 'wc_advanced_shipment_tracking' ) ) {
+	private function get_actions() {
+		if ( ! class_exists( 'WC_Advanced_Shipment_Tracking_Actions' ) ) {
 			return null;
 		}
 
-		$instance = wc_advanced_shipment_tracking();
-
-		if ( ! is_object( $instance ) || ! method_exists( $instance, 'add_tracking_item' ) ) {
+		if ( ! is_callable( array( 'WC_Advanced_Shipment_Tracking_Actions', 'get_instance' ) ) ) {
 			return null;
 		}
 
-		return $instance;
+		$actions = WC_Advanced_Shipment_Tracking_Actions::get_instance();
+
+		if ( ! is_object( $actions ) || ! method_exists( $actions, 'add_tracking_item' ) ) {
+			return null;
+		}
+
+		return $actions;
 	}
 
 	/**
-	 * Reads the carrier list straight from AST's provider table.
+	 * Reads a carrier's display name from AST's provider entry.
 	 *
-	 * AST has no public accessor that returns the full list in a stable shape,
-	 * so the table is read directly and the result cached in a transient.
-	 *
-	 * @since 1.0.0
-	 * @return array Map of `ts_slug` => provider name.
-	 */
-	private function fetch_carriers() {
-		global $wpdb;
-
-		$table = $this->get_providers_table();
-
-		if ( '' === $table ) {
-			return array();
-		}
-
-		/*
-		 * A table name cannot be a prepared placeholder. It is safe here because
-		 * get_providers_table() only returns a name matching a strict allowlist
-		 * that also exists in the database, and the result is cached by the caller.
-		 */
-		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-		$rows = $wpdb->get_results( "SELECT provider_name, ts_slug FROM `{$table}` ORDER BY provider_name ASC" );
-		// phpcs:enable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-
-		if ( ! is_array( $rows ) ) {
-			return array();
-		}
-
-		$carriers = array();
-
-		foreach ( $rows as $row ) {
-			if ( empty( $row->ts_slug ) || empty( $row->provider_name ) ) {
-				continue;
-			}
-
-			$carriers[ (string) $row->ts_slug ] = (string) $row->provider_name;
-		}
-
-		return $carriers;
-	}
-
-	/**
-	 * Resolves and validates AST's provider table name.
-	 *
-	 * AST computes its own table name (it points multisite subsites at the main
-	 * blog's table), so its value is preferred over rebuilding the name here.
+	 * AST returns an array per carrier, but older releases returned a plain
+	 * string, so both shapes are accepted.
 	 *
 	 * @since 1.0.0
-	 * @return string Validated table name, or an empty string when unusable.
+	 *
+	 * @param mixed  $provider Provider entry from AST.
+	 * @param string $slug     Carrier slug, used as the fallback label.
+	 * @return string
 	 */
-	private function get_providers_table() {
-		global $wpdb;
-
-		$instance = $this->get_ast_instance();
-		$table    = $wpdb->prefix . 'woo_shippment_provider';
-
-		if ( null !== $instance && isset( $instance->table ) && is_string( $instance->table ) && '' !== $instance->table ) {
-			$table = $instance->table;
+	private function extract_provider_name( $provider, $slug ) {
+		if ( is_array( $provider ) && ! empty( $provider['provider_name'] ) ) {
+			return (string) $provider['provider_name'];
 		}
 
-		// Only ever accept a plain identifier; never anything that could break out of the query.
-		if ( ! preg_match( '/^[A-Za-z0-9_]+$/', $table ) ) {
-			return '';
+		if ( is_string( $provider ) && '' !== $provider ) {
+			return $provider;
 		}
 
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Existence check for a third-party table.
-		$exists = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) );
-
-		return $exists === $table ? $table : '';
+		return $slug;
 	}
 }

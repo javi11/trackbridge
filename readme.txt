@@ -4,7 +4,7 @@ Tags: woocommerce, shipment tracking, mobile app, order tracking, gls
 Requires at least: 5.9
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 1.0.0
+Stable tag: 1.0.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -64,11 +64,25 @@ Check that the **Completed order** email is enabled in **WooCommerce > Settings 
 
 Nothing bad. TrackBridge compares against the tracking numbers already on the order and skips anything that is already there, so the customer is not emailed again.
 
+= The settings screen says no tracking plugin is active, but mine is =
+
+Update to 1.0.1. Version 1.0.0 looked for Advanced Shipment Tracking's API on the wrong object and never detected it.
+
+= The carrier dropdown is empty or shows a text box =
+
+Advanced Shipment Tracking downloads its carrier list in the background after you activate it, so the list can be briefly empty on a new install. Wait a minute and reload the settings screen. TrackBridge still works meanwhile — it just asks you to type the carrier name instead of picking it.
+
 = Where do I look when something goes wrong? =
 
 Failures are always written to the order notes and to **WooCommerce > Status > Logs**, and the typed value is kept on the order so nothing is lost.
 
 == Changelog ==
+
+= 1.0.1 =
+* Fix - Advanced Shipment Tracking was never detected, so every sync reported "No supported shipment tracking plugin is active". The adapter looked for `add_tracking_item()` on the object returned by `wc_advanced_shipment_tracking()`, but that is the main plugin class; the method lives on `WC_Advanced_Shipment_Tracking_Actions`.
+* Fix - Always send a shipped date to Advanced Shipment Tracking, which calls `strtotime()` on it without checking that it was supplied.
+* Improve - Read the carrier list through Advanced Shipment Tracking's own `get_providers()` accessor instead of querying its table directly.
+* Tests - The integration suite now runs against the real Advanced Shipment Tracking plugin, which is what would have caught this before release.
 
 = 1.0.0 =
 * Initial release.

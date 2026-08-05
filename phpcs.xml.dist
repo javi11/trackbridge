@@ -58,4 +58,8 @@
 	<rule ref="WordPress.Security.EscapeOutput">
 		<exclude-pattern>/tests/</exclude-pattern>
 	</rule>
+	<!-- Integration tests seed third-party tables directly, on purpose. -->
+	<rule ref="WordPress.DB.DirectDatabaseQuery">
+		<exclude-pattern>/tests/</exclude-pattern>
+	</rule>
 </ruleset>
