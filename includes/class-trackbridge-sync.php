@@ -66,6 +66,58 @@ class Trackbridge_Sync {
 	public function register() {
 		add_action( 'woocommerce_update_order', array( $this, 'maybe_sync' ), 20, 2 );
 		add_action( 'woocommerce_new_order', array( $this, 'maybe_sync' ), 20, 2 );
+
+		// Runs before the sync so an order created with a value is still synced.
+		add_action( 'woocommerce_new_order', array( $this, 'maybe_seed_field' ), 10, 2 );
+	}
+
+	/**
+	 * Adds the bridge field, empty, to a newly created order.
+	 *
+	 * The mobile apps can create custom fields themselves, so this is only a
+	 * convenience: it means the field is already listed on the order, and
+	 * shipping becomes "tap the value" instead of "type the field name". Both
+	 * apps filter custom fields by key prefix and never by value, so an empty
+	 * value still shows as an editable row.
+	 *
+	 * Only new orders are seeded. Re-adding the field after a sync has cleared it
+	 * would make a shipped order look unshipped.
+	 *
+	 * @since 1.1.0
+	 *
+	 * @param int           $order_id Order ID.
+	 * @param WC_Order|null $order    Optional. Order object, when the hook supplies one.
+	 * @return void
+	 */
+	public function maybe_seed_field( $order_id, $order = null ) {
+		if ( ! Trackbridge_Settings::seeds_new_orders() ) {
+			return;
+		}
+
+		$order_id = absint( $order_id );
+
+		if ( 0 === $order_id || isset( self::$in_flight[ $order_id ] ) ) {
+			return;
+		}
+
+		if ( ! $order instanceof WC_Order ) {
+			$order = wc_get_order( $order_id );
+		}
+
+		if ( ! $order instanceof WC_Order ) {
+			return;
+		}
+
+		$meta_key = Trackbridge_Settings::get_meta_key();
+
+		if ( '' === $meta_key || $order->meta_exists( $meta_key ) ) {
+			return;
+		}
+
+		$order->update_meta_data( $meta_key, '' );
+
+		// Only the meta is written, so the order status is left untouched.
+		$order->save_meta_data();
 	}
 
 	/**
@@ -210,6 +262,18 @@ class Trackbridge_Sync {
 			'failed'  => 0,
 		);
 
+		/*
+		 * Check for existing tracking against freshly loaded data. The instance the
+		 * hook hands over can be stale — adapters write tracking through their own
+		 * order instance, and a caller holding an older copy can save it again —
+		 * and a stale copy would make an already-tracked shipment look new.
+		 */
+		$known = wc_get_order( $order->get_id() );
+
+		if ( ! $known instanceof WC_Order ) {
+			$known = $order;
+		}
+
 		foreach ( $intents as $intent ) {
 			$number  = $intent['number'];
 			$carrier = $intent['carrier'];
@@ -227,7 +291,7 @@ class Trackbridge_Sync {
 				continue;
 			}
 
-			if ( $provider->has_tracking( $order, $number, $carrier ) ) {
+			if ( $provider->has_tracking( $known, $number, $carrier ) ) {
 				++$outcome['skipped'];
 				continue;
 			}

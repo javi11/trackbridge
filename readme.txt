@@ -4,7 +4,7 @@ Tags: woocommerce, shipment tracking, mobile app, order tracking, gls
 Requires at least: 5.9
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 1.0.1
+Stable tag: 1.1.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -14,7 +14,9 @@ Add shipment tracking from the official WooCommerce mobile app by typing a track
 
 The official WooCommerce mobile app cannot open plugin screens, so there is no way to add a tracking number to an order from your phone. It *can* edit order custom fields — and TrackBridge turns that into a working fulfilment flow.
 
-Open an order in the app, add a custom field called `tracking_number`, type the number, and save. TrackBridge notices the value on the server, hands it to your shipment tracking plugin with the carrier you configured, optionally completes the order and emails the customer, then clears the field so it is ready for the next shipment.
+Open an order in the app, put a tracking number in the `tracking_number` custom field, and save. TrackBridge notices the value on the server, hands it to your shipment tracking plugin with the carrier you configured, optionally completes the order and emails the customer, then clears the field so it is ready for the next shipment.
+
+By default the field is already waiting on every new order, empty, so shipping from your phone is just tapping in the number.
 
 = Supported tracking plugins =
 
@@ -25,6 +27,7 @@ Whichever is active is detected automatically.
 
 = What it does =
 
+* Adds the field to every new order, empty and ready to fill in
 * Watches one order custom field, whatever you choose to call it
 * Writes the tracking number and carrier into your tracking plugin
 * Optionally marks the order completed
@@ -44,7 +47,9 @@ WordPress treats underscore-prefixed meta as protected, and the WooCommerce mobi
 1. Install and activate Advanced Shipment Tracking or WooCommerce Shipment Tracking.
 2. Upload and activate TrackBridge.
 3. Go to **WooCommerce > Settings > Shipping > TrackBridge**, pick your carrier, and note the field name.
-4. In the WooCommerce mobile app, open an order, add that custom field, and enter a tracking number.
+4. In the WooCommerce mobile app, open a new order and put a tracking number in that custom field.
+
+Orders that already existed before you installed TrackBridge will not have the field; add it by hand in the app, or just place the next order.
 
 == Frequently Asked Questions ==
 
@@ -76,7 +81,15 @@ Advanced Shipment Tracking downloads its carrier list in the background after yo
 
 Failures are always written to the order notes and to **WooCommerce > Status > Logs**, and the typed value is kept on the order so nothing is lost.
 
+= The field is missing on an older order =
+
+Only orders created after you installed TrackBridge get the field automatically. Add it by hand in the app for older ones — the app can create custom fields itself. You can also turn the automatic behaviour off in the settings if you would rather keep order meta clean.
+
 == Changelog ==
+
+= 1.1.0 =
+* New - Add the tracking field to every new order, empty and ready to fill in, so shipping from your phone no longer means typing the field name. Can be switched off in the settings.
+* Fix - Do not add a second tracking item when an order is saved again from a stale order object held elsewhere in the same request.
 
 = 1.0.1 =
 * Fix - Advanced Shipment Tracking was never detected, so every sync reported "No supported shipment tracking plugin is active". The adapter looked for `add_tracking_item()` on the object returned by `wc_advanced_shipment_tracking()`, but that is the main plugin class; the method lives on `WC_Advanced_Shipment_Tracking_Actions`.

@@ -13,8 +13,10 @@ The app *can* create and edit order custom fields. TrackBridge turns that into a
 ```
 WooCommerce app                TrackBridge (server)
 ──────────────                 ────────────────────
+                               woocommerce_new_order
+                               └─ seed empty tracking_number
 open order
-add custom field
+fill in the field
   tracking_number = 1234567890
 save  ──────────────────────▶  woocommerce_update_order
                                ├─ parse the value
@@ -48,6 +50,7 @@ Then open **WooCommerce > Settings > Shipping > TrackBridge**, choose your carri
 | Setting | Default | What it does |
 | --- | --- | --- |
 | Custom field name | `tracking_number` | The field TrackBridge watches. Cannot start with `_`. |
+| Add the field to new orders | On | Puts the field on every new order, empty, so you only tap in the number. |
 | Tracking plugin | Automatic | Which plugin receives the number. |
 | Carrier | GLS | Recorded against every tracking number. |
 | Mark the order completed | On | Completes the order after tracking is added. |
@@ -68,7 +71,8 @@ So a field named `_tracking_number` would be invisible and uneditable on a phone
 
 ## Behaviour worth knowing
 
-- **Repeated saves are safe.** Tracking numbers already on the order are skipped, and the customer is not emailed again.
+- **Only new orders get the field.** Seeding runs on `woocommerce_new_order` only. Re-adding it after a sync cleared it would make a shipped order look unshipped, and orders predating the install are left alone.
+- **Repeated saves are safe.** Tracking numbers already on the order are skipped — checked against freshly loaded data, so a stale order object elsewhere in the request cannot cause a duplicate — and the customer is not emailed again.
 - **Failures never lose data.** If the tracking plugin rejects a write, the field is left in place and the order is not completed. The reason lands in the order notes and in **WooCommerce > Status > Logs**.
 - **Completion and email are independent.** `update_status( 'completed' )` is a no-op on an already-completed order and sends no email, so a late tracking number on a completed order triggers the email directly instead.
 - **Both storage engines are supported.** The single `woocommerce_update_order` hook fires under High-Performance Order Storage and the legacy post tables alike; the integration suite runs against both.

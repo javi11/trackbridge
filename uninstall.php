@@ -21,6 +21,7 @@ $trackbridge_options = array(
 	'trackbridge_allow_carrier_override',
 	'trackbridge_split_multiple',
 	'trackbridge_logging',
+	'trackbridge_seed_new_orders',
 );
 
 foreach ( $trackbridge_options as $trackbridge_option ) {

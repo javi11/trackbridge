@@ -155,6 +155,26 @@ class SyncIntegrationTest extends WP_UnitTestCase {
 		$this->assertCount( 1, $this->provider->calls, 'The second pass must skip, not re-add.' );
 	}
 
+	public function test_does_not_duplicate_when_a_stale_order_instance_is_saved_again() {
+		$order = $this->create_order();
+
+		$order->update_meta_data( 'tracking_number', '1234567890' );
+		$order->save();
+
+		/*
+		 * $order is now stale: the sync deleted the field and wrote tracking
+		 * through other instances. Saving it again writes the old value back,
+		 * which must not produce a second tracking item.
+		 */
+		$order->save();
+
+		$this->assertCount(
+			1,
+			$this->get_tracking_items( $order->get_id() ),
+			'Idempotency must not depend on the freshness of the order instance.'
+		);
+	}
+
 	public function test_does_not_loop_when_the_sync_saves_the_order() {
 		$order = $this->create_order();
 		$this->set_field( $order, '1234567890' );

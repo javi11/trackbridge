@@ -156,6 +156,14 @@ class Trackbridge_Settings {
 			array( $this->get_carrier_field( $carriers ) ),
 			array(
 				array(
+					'name'     => __( 'Add the field to new orders', 'trackbridge' ),
+					'desc'     => __( 'Put the field on every new order, empty and ready to fill in.', 'trackbridge' ),
+					'desc_tip' => __( 'Saves typing the field name on your phone: the row is already there, so you only tap in the tracking number. Turn this off to keep order meta clean and add the field by hand instead.', 'trackbridge' ),
+					'id'       => 'trackbridge_seed_new_orders',
+					'type'     => 'checkbox',
+					'default'  => 'yes',
+				),
+				array(
 					'name'    => __( 'Mark the order completed', 'trackbridge' ),
 					'desc'    => __( 'Complete the order once tracking has been added.', 'trackbridge' ),
 					'id'      => 'trackbridge_mark_completed',
@@ -472,6 +480,16 @@ class Trackbridge_Settings {
 	 */
 	public static function logging_enabled() {
 		return 'yes' === get_option( 'trackbridge_logging', 'no' );
+	}
+
+	/**
+	 * Whether new orders get the bridge field added, empty and ready to fill in.
+	 *
+	 * @since 1.1.0
+	 * @return bool
+	 */
+	public static function seeds_new_orders() {
+		return 'yes' === get_option( 'trackbridge_seed_new_orders', 'yes' );
 	}
 
 	/**
