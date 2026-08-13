@@ -97,17 +97,38 @@ jobs:
 
           # wp-env does NOT merge `plugins` from an override file — setting it
           # replaces the base array wholesale. So rewrite only the WooCommerce
-          # entry inside the existing array. Writing a fresh array would silently
+          # entry inside each existing array. Writing a fresh array would silently
           # drop "." (this plugin) and woo-advanced-shipment-tracking, and the
           # run would prove nothing.
-          jq --arg url "https://downloads.wordpress.org/plugin/woocommerce.${LATEST}.zip" \
-            '.plugins = (.plugins | map(
-               if type == "string" and test("/woocommerce\\.") then $url else . end
-             ))' \
-            .wp-env.json > .wp-env.override.json
+          #
+          # Both the top-level `plugins` and any per-environment `env.*.plugins`
+          # are pinned. This repo currently defines no `env` key, so the tests
+          # environment inherits the top-level array — but a future `env.tests`
+          # holding its own WooCommerce entry would otherwise silently run the
+          # suite against an unpinned version.
+          jq --arg url "https://downloads.wordpress.org/plugin/woocommerce.${LATEST}.zip" '
+            def pin: map(if type == "string" and test("/woocommerce\\.") then $url else . end);
+            (.plugins |= pin)
+            | if has("env") then
+                .env |= with_entries(
+                  if (.value | type == "object") and (.value | has("plugins"))
+                  then .value.plugins |= pin
+                  else .
+                  end
+                )
+              else . end
+          ' .wp-env.json > .wp-env.override.json
 
           if ! grep -q "woocommerce.${LATEST}.zip" .wp-env.override.json; then
             echo "::error::No WooCommerce entry found in .wp-env.json — the override would not pin anything."
+            exit 1
+          fi
+
+          # Any surviving unpinned WooCommerce reference means some plugins array
+          # was missed, and the suite would silently test the wrong version.
+          if grep -oE 'plugin/woocommerce\.[^"]*' .wp-env.override.json \
+            | grep -v "woocommerce.${LATEST}.zip"; then
+            echo "::error::The override still references an unpinned WooCommerce zip (listed above)."
             exit 1
           fi
 
@@ -116,6 +137,24 @@ jobs:
       - name: Start WordPress and WooCommerce
         if: steps.resolve.outputs.needs_test == 'true'
         run: npx --yes @wordpress/env@latest start
+
+      - name: Confirm the pinned WooCommerce is what actually got installed
+        if: steps.resolve.outputs.needs_test == 'true'
+        env:
+          LATEST: ${{ steps.resolve.outputs.latest }}
+        run: |
+          set -euo pipefail
+
+          # Verify against the running container rather than trusting the config.
+          # This is the only step that proves the version under test.
+          installed="$(npx --yes @wordpress/env@latest run tests-cli wp plugin get woocommerce --field=version 2>/dev/null \
+            | tr -d '\r' | tail -n 1)"
+          echo "WooCommerce installed in the tests environment: '$installed' (expected '$LATEST')"
+
+          if [ "$installed" != "$LATEST" ]; then
+            echo "::error::The tests environment is running WooCommerce '$installed', not the pinned '$LATEST'."
+            exit 1
+          fi
 
       - name: Run integration tests
         id: tests
