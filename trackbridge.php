@@ -19,7 +19,7 @@
  * Text Domain:          trackbridge
  * Domain Path:          /languages
  * WC requires at least: 6.0
- * WC tested up to:      11.2
+ * WC tested up to:      11.3
  */
 
 defined( 'ABSPATH' ) || exit;
